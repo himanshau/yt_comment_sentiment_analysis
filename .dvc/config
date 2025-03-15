@@ -1,0 +1,4 @@
+[core]
+    remote = myremote
+['remote "myremote"']
+    url = C:\Users\hp\Pictures\ytcomment analysis\main app\yt_comment_sentiment_analysis\temp
