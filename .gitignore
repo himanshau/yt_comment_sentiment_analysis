@@ -90,3 +90,9 @@ target/
 
 # Mypy cache
 .mypy_cache/
+
+# Model files
+lgbm_model.pkl
+tfidf_vectorizer.pkl
+confusion_matrix.png
+metrics.json

@@ -32,6 +32,13 @@ stages:
     outs:
     - lgbm_model.pkl
     - tfidf_vectorizer.pkl
-    metrics:
-    - metrics.json:
-        cache: false
+
+  model_evaluation:
+    cmd: python src/model/model_evaluation.py
+    deps:
+    - data/interim/test_processed.csv
+    - src/model/model_evaluation.py
+    - lgbm_model.pkl
+    - tfidf_vectorizer.pkl
+   
+
