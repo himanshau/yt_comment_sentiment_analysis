@@ -96,3 +96,4 @@ lgbm_model.pkl
 tfidf_vectorizer.pkl
 confusion_matrix.png
 metrics.json
+/experiment_info.json
