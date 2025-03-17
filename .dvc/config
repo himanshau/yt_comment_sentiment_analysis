@@ -1,5 +1,4 @@
 [core]
-    remote = myremote
     autostage = true
-['remote "myremote"']
-    url = C:\Users\hp\Pictures\ytcomment analysis\main app\yt_comment_sentiment_analysis\temp
+['remote "origin"']
+    url = https://dagshub.com/himanshau/yt_comment_sentiment_analysis.dvc

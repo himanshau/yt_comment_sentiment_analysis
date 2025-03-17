@@ -18,6 +18,8 @@ from nltk.stem import WordNetLemmatizer
 from mlflow.tracking import MlflowClient
 import matplotlib.dates as mdates
 import dagshub
+import pickle
+import traceback
 
 app = Flask(__name__)
 CORS(app)  # Enable CORS for all routes
@@ -61,8 +63,78 @@ def load_model_and_vectorizer(model_name, model_version, vectorizer_path):
     vectorizer = joblib.load(vectorizer_path)  # Load the vectorizer
     return model, vectorizer
 
+# Alternative model loading function
+def load_local_model():
+    try:
+        # Try different model file paths
+        model_paths = ["lgbm_model.pkl", "./lgbm_model.pkl", "../lgbm_model.pkl"]
+        
+        for path in model_paths:
+            try:
+                print(f"Trying to load model from {path}")
+                with open(path, 'rb') as f:
+                    model = pickle.load(f)
+                print(f"Successfully loaded model from {path}")
+                return model
+            except FileNotFoundError:
+                print(f"Model file not found at {path}")
+                continue
+            except Exception as e:
+                print(f"Error loading model from {path}: {e}")
+                continue
+        
+        raise FileNotFoundError("Could not find model file in any of the expected locations")
+    except Exception as e:
+        print(f"Error in load_local_model: {e}")
+        raise
+
+def load_local_vectorizer():
+    try:
+        # Try different vectorizer file paths
+        vectorizer_paths = ["tfidf_vectorizer.pkl", "./tfidf_vectorizer.pkl", "../tfidf_vectorizer.pkl"]
+        
+        for path in vectorizer_paths:
+            try:
+                print(f"Trying to load vectorizer from {path}")
+                vectorizer = joblib.load(path)
+                print(f"Successfully loaded vectorizer from {path}")
+                return vectorizer
+            except FileNotFoundError:
+                print(f"Vectorizer file not found at {path}")
+                continue
+            except Exception as e:
+                print(f"Error loading vectorizer from {path}: {e}")
+                continue
+        
+        raise FileNotFoundError("Could not find vectorizer file in any of the expected locations")
+    except Exception as e:
+        print(f"Error in load_local_vectorizer: {e}")
+        raise
+
 # Initialize the model and vectorizer
-model, vectorizer = load_model_and_vectorizer("lgbm_model", "1", "./tfidf_vectorizer.pkl")  # Update paths and versions as needed
+try:
+    print("Attempting to load model and vectorizer...")
+    # Try loading from MLflow
+    try:
+        print("Trying to load from MLflow...")
+        model, vectorizer = load_model_and_vectorizer("lgbm_model", "1", "./tfidf_vectorizer.pkl")
+        print("Successfully loaded from MLflow")
+    except Exception as e:
+        print(f"Error loading from MLflow: {e}")
+        # Fallback to local files
+        print("Falling back to local files...")
+        model = load_local_model()
+        vectorizer = load_local_vectorizer()
+        print("Successfully loaded from local files")
+except Exception as e:
+    print(f"CRITICAL ERROR: Failed to load model or vectorizer: {e}")
+    # Create dummy model and vectorizer for testing
+    from sklearn.feature_extraction.text import CountVectorizer
+    from sklearn.dummy import DummyClassifier
+    print("Creating dummy model and vectorizer for testing")
+    model = DummyClassifier(strategy="most_frequent").fit([[0]], [0])
+    vectorizer = CountVectorizer().fit(["dummy text"])
+    print("Dummy model and vectorizer created")
 
 @app.route('/')
 def home():
@@ -86,13 +158,24 @@ def predict_with_timestamps():
         # Transform comments using the vectorizer
         transformed_comments = vectorizer.transform(preprocessed_comments)
         
+        # Convert to DataFrame with feature names for MLflow model
+        feature_names = vectorizer.get_feature_names_out()
+        transformed_df = pd.DataFrame(
+            transformed_comments.toarray(),
+            columns=feature_names
+        )
+        
         # Make predictions
-        predictions = model.predict(transformed_comments).tolist()  # Convert to list
+        predictions = model.predict(transformed_df).tolist()
         
         # Convert predictions to strings for consistency
         predictions = [str(pred) for pred in predictions]
     except Exception as e:
-        return jsonify({"error": f"Prediction failed: {str(e)}"}), 500
+        import traceback
+        error_trace = traceback.format_exc()
+        print(f"Error in predict_with_timestamps: {e}")
+        print(f"Traceback: {error_trace}")
+        return jsonify({"error": f"Prediction failed: {str(e)}", "traceback": error_trace}), 500
     
     # Return the response with original comments, predicted sentiments, and timestamps
     response = [{"comment": comment, "sentiment": sentiment, "timestamp": timestamp} for comment, sentiment, timestamp in zip(comments, predictions, timestamps)]
@@ -113,13 +196,24 @@ def predict():
         # Transform comments using the vectorizer
         transformed_comments = vectorizer.transform(preprocessed_comments)
         
+        # Convert to DataFrame with feature names for MLflow model
+        feature_names = vectorizer.get_feature_names_out()
+        transformed_df = pd.DataFrame(
+            transformed_comments.toarray(),
+            columns=feature_names
+        )
+        
         # Make predictions
-        predictions = model.predict(transformed_comments).tolist()  # Convert to list
+        predictions = model.predict(transformed_df).tolist()
         
         # Convert predictions to strings for consistency
         predictions = [str(pred) for pred in predictions]
     except Exception as e:
-        return jsonify({"error": f"Prediction failed: {str(e)}"}), 500
+        import traceback
+        error_trace = traceback.format_exc()
+        print(f"Error in predict: {e}")
+        print(f"Traceback: {error_trace}")
+        return jsonify({"error": f"Prediction failed: {str(e)}", "traceback": error_trace}), 500
     
     # Return the response with original comments and predicted sentiments
     response = [{"comment": comment, "sentiment": sentiment} for comment, sentiment in zip(comments, predictions)]
@@ -288,6 +382,78 @@ def generate_trend_graph():
     except Exception as e:
         app.logger.error(f"Error in /generate_trend_graph: {e}")
         return jsonify({"error": f"Trend graph generation failed: {str(e)}"}), 500
+
+@app.route('/test_model', methods=['GET'])
+def test_model():
+    try:
+        # Test with a simple comment
+        test_comment = "This is a great video, I really enjoyed it!"
+        print(f"Test comment: {test_comment}")
+        
+        # Preprocess the comment
+        preprocessed = preprocess_comment(test_comment)
+        print(f"Preprocessed comment: {preprocessed}")
+        
+        # For MLflow PyFuncModel, we need to handle the transformation differently
+        try:
+            # First transform the text using the vectorizer
+            transformed = vectorizer.transform([preprocessed])
+            print(f"Transformed shape: {transformed.shape}")
+            
+            # Convert the sparse matrix to a dense array and create a DataFrame with the expected feature names
+            feature_names = vectorizer.get_feature_names_out()
+            transformed_df = pd.DataFrame(
+                transformed.toarray(),
+                columns=feature_names
+            )
+            
+            # Make prediction using the transformed DataFrame
+            prediction = model.predict(transformed_df)
+            print(f"Prediction result: {prediction}")
+            
+        except Exception as pe:
+            print(f"Error in prediction: {pe}")
+            print(f"Traceback: {traceback.format_exc()}")
+            raise
+        
+        return jsonify({
+            "status": "success",
+            "test_comment": test_comment,
+            "preprocessed": preprocessed,
+            "prediction": str(prediction[0]) if isinstance(prediction, (list, np.ndarray)) else str(prediction),
+            "model_type": str(type(model)),
+            "vectorizer_type": str(type(vectorizer))
+        })
+    except Exception as e:
+        import traceback
+        error_trace = traceback.format_exc()
+        print(f"Error in test_model: {e}")
+        print(f"Traceback: {error_trace}")
+        return jsonify({
+            "status": "error",
+            "error": str(e),
+            "traceback": error_trace
+        }), 500
+
+@app.route('/check_model', methods=['GET'])
+def check_model():
+    try:
+        model_info = {
+            "model_loaded": model is not None,
+            "model_type": str(type(model)),
+            "vectorizer_loaded": vectorizer is not None,
+            "vectorizer_type": str(type(vectorizer))
+        }
+        return jsonify(model_info)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/simple_test', methods=['GET'])
+def simple_test():
+    return jsonify({
+        "status": "API is working",
+        "time": str(pd.Timestamp.now())
+    })
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)

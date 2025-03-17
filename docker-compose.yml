@@ -1,0 +1,33 @@
+version: '3.8'
+
+services:
+  backend:
+    build: .
+    ports:
+      - "5000:5000"
+    environment:
+      - FLASK_ENV=production
+      - DAGSHUB_TOKEN=${DAGSHUB_TOKEN}
+    volumes:
+      - ./models:/app/models
+    networks:
+      - app-network
+
+  extension-dev:
+    build: 
+      context: ../yt_sentiment_frontend
+      dockerfile: Dockerfile
+    ports:
+      - "8080:80"
+    environment:
+      - API_URL=http://localhost:5000
+    volumes:
+      - ../yt_sentiment_frontend:/usr/share/nginx/html
+    depends_on:
+      - backend
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge 

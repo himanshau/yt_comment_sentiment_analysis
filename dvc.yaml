@@ -1,4 +1,36 @@
 stages:
+  prepare:
+    cmd: python scripts/prepare_data.py
+    deps:
+      - data/raw
+    outs:
+      - data/processed
+    metrics:
+      - metrics/prepare.json:
+          cache: false
+
+  train:
+    cmd: python scripts/train.py
+    deps:
+      - data/processed
+      - scripts/train.py
+    outs:
+      - models/model.pkl
+      - models/vectorizer.pkl
+    metrics:
+      - metrics/train.json:
+          cache: false
+
+  evaluate:
+    cmd: python scripts/evaluate.py
+    deps:
+      - models/model.pkl
+      - models/vectorizer.pkl
+      - data/processed
+    metrics:
+      - metrics/evaluate.json:
+          cache: false
+
   data_ingestion:
     cmd: python src/data/data_ingestion.py
     deps:
